@@ -204,20 +204,34 @@ class GestureRecognizer:
     @staticmethod
     def is_palm_facing(landmarks):
         """
-        Check if palm is facing the camera (not the back of hand).
-        Uses z-depth: fingertips should be closer to camera than wrist.
-        Lenient threshold for detection at distance.
+        Check if palm is facing the camera (not back of hand).
+        Uses 2D geometry: when palm faces camera, thumb is on the side.
+        This works at any distance - no z-depth dependency.
         """
         if not landmarks:
             return False
 
         wrist = landmarks[0]
-        # Check if fingertips are in front of wrist (lower z = closer to camera)
-        finger_z_sum = 0
-        for tip_idx in [4, 8, 12, 16, 20]:  # thumb, index, middle, ring, pinky tips
-            finger_z_sum += landmarks[tip_idx].z
+        index_mcp = landmarks[5]  # Base of index finger
+        thumb_tip = landmarks[4]
+        pinky_tip = landmarks[20]
 
-        avg_finger_z = finger_z_sum / 5.0
-        # Palm facing camera: fingers have lower z (closer) than wrist
-        # Lenient threshold (+0.1) for detection at distance
-        return avg_finger_z < wrist.z + 0.1
+        # Vector from wrist to index MCP
+        to_index_x = index_mcp.x - wrist.x
+        to_index_y = index_mcp.y - wrist.y
+
+        # Vector from wrist to thumb tip
+        to_thumb_x = thumb_tip.x - wrist.x
+        to_thumb_y = thumb_tip.y - wrist.y
+
+        # Vector from wrist to pinky tip
+        to_pinky_x = pinky_tip.x - wrist.x
+        to_pinky_y = pinky_tip.y - wrist.y
+
+        # Cross products tell us which side thumb/pinky are on
+        cross_thumb = to_index_x * to_thumb_y - to_index_y * to_thumb_x
+        cross_pinky = to_index_x * to_pinky_y - to_index_y * to_pinky_x
+
+        # Palm facing: thumb and pinky on OPPOSITE sides of index line
+        # (for right hand: thumb right, pinky left; for left hand: reversed)
+        return cross_thumb * cross_pinky < 0
