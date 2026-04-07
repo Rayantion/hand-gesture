@@ -106,7 +106,44 @@ class HandTracker:
             return image
 
         for landmarks in hand_landmarks:
-            for connection in mp.HAND_CONNECTIONS:
+        def draw_landmarks(self, image, hand_landmarks):
+        """
+        Draw hand landmarks and connections on image.
+
+        Args:
+            image: BGR image to draw on
+            hand_landmarks: Tasks API landmark list from results.hand_landmarks
+
+        Returns:
+            Image with drawn landmarks
+        """
+        if not hand_landmarks:
+            return image
+
+        HAND_CONNECTIONS = [
+            (0, 1), (1, 2), (2, 3), (3, 4),
+            (0, 5), (5, 6), (6, 7), (7, 8),
+            (5, 9), (9, 10), (10, 11), (11, 12),
+            (9, 13), (13, 14), (14, 15), (15, 16),
+            (13, 17), (17, 18), (18, 19), (19, 20),
+            (0, 17), (5, 9), (9, 13), (13, 17),
+        ]
+
+        for landmarks in hand_landmarks:
+            for connection in HAND_CONNECTIONS:
+                start_idx, end_idx = connection
+                pt1 = landmarks[start_idx]
+                pt2 = landmarks[end_idx]
+                pt1 = (int(pt1.x * image.shape[1]), int(pt1.y * image.shape[0]))
+                pt2 = (int(pt2.x * image.shape[1]), int(pt2.y * image.shape[0]))
+                cv2.line(image, pt1, pt2, (0, 255, 0), 2)
+
+            for lm in landmarks:
+                cx = int(lm.x * image.shape[1])
+                cy = int(lm.y * image.shape[0])
+                cv2.circle(image, (cx, cy), 3, (0, 255, 0), -1)
+
+        return image
                 start_idx, end_idx = connection
                 pt1 = landmarks[start_idx]
                 pt2 = landmarks[end_idx]
