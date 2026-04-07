@@ -28,3 +28,6 @@ WINDOW_NAME = "Hand Gesture Control"
 
 # Debug mode (show extra info)
 DEBUG = False
+
+# Cursor sensitivity (0.65 = amplified small movements, lower = more sensitive)
+CURSOR_SENSITIVITY = 0.65

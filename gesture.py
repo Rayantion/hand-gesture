@@ -9,7 +9,7 @@ from config import PINCH_THRESHOLD
 
 class GestureRecognizer:
     """Recognize hand gestures from landmarks."""
-    
+
     # Landmark indices
     THUMB_TIP = 4
     INDEX_TIP = 8
@@ -18,53 +18,128 @@ class GestureRecognizer:
     MIDDLE_MCP = 9
     RING_MCP = 13
     PINKY_MCP = 17
-    
-    FINGER_TIPS = [8, 12, 16, 20]  # Index, Middle, Ring, Pinky tips
-    FINGER_KNUCKLES = [5, 9, 13, 17]  # Corresponding MCP joints
-    
+
+    FINGER_TIPS = [8, 12, 16, 20]
+    FINGER_KNUCKLES = [5, 9, 13, 17]
+    FINGER_PIPS = [6, 10, 14, 18]  # middle joints
+
     @staticmethod
     def get_distance(p1, p2):
-        """
-        Calculate Euclidean distance between two landmarks.
-        
-        Args:
-            p1, p2: Landmark objects with .x and .y attributes
-            
-        Returns:
-            Distance value
-        """
         return np.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2)
-    
+
     @staticmethod
     def is_pinched(landmarks):
         """
         Check if thumb and index finger are pinched together.
-        
-        Args:
-            landmarks: List of 21 hand landmarks
-            
-        Returns:
-            True if pinched, False otherwise
+        Extra check: other fingers should be curled to avoid false triggers.
         """
         if not landmarks:
             return False
-        
+
         thumb = landmarks[GestureRecognizer.THUMB_TIP]
         index = landmarks[GestureRecognizer.INDEX_TIP]
-        
         distance = GestureRecognizer.get_distance(thumb, index)
-        return distance < PINCH_THRESHOLD
-    
+
+        if distance >= PINCH_THRESHOLD:
+            return False
+
+        # Additional check: other fingers should be somewhat curled
+        # (tips below their PIP joints) to avoid false positives
+        other_curled = 0
+        for tip_idx, pip_idx in zip([12, 16, 20], [10, 14, 18]):
+            if landmarks[tip_idx].y > landmarks[pip_idx].y:
+                other_curled += 1
+
+        return other_curled >= 2
+
+    @staticmethod
+    def is_pinched_strict(landmarks):
+        """Strict pinch — just distance check, for drag release."""
+        if not landmarks:
+            return False
+        thumb = landmarks[GestureRecognizer.THUMB_TIP]
+        index = landmarks[GestureRecognizer.INDEX_TIP]
+        return GestureRecognizer.get_distance(thumb, index) < PINCH_THRESHOLD
+
+    @staticmethod
+    def get_cursor_position(landmarks):
+        """
+        Get cursor position from midpoint of thumb and index tips.
+        Applies sensitivity curve so small movements cover more screen.
+        """
+        if not landmarks:
+            return None
+
+        thumb = landmarks[GestureRecognizer.THUMB_TIP]
+        index = landmarks[GestureRecognizer.INDEX_TIP]
+
+        # Midpoint
+        mx = (thumb.x + index.x) / 2.0
+        my = (thumb.y + index.y) / 2.0
+
+        # Sensitivity curve: amplify small movements
+        # Power < 1 compresses large movements, expands small ones
+        SENSITIVITY = 0.65  # lower = more sensitive
+        mx = mx ** SENSITIVITY
+        my = my ** SENSITIVITY
+
+        return (mx, my)
+
+    @staticmethod
+    def is_open_palm(landmarks):
+        """Check if hand is open (all fingers extended)."""
+        if not landmarks:
+            return False
+        for tip_idx, knuckle_idx in zip(
+            GestureRecognizer.FINGER_TIPS,
+            GestureRecognizer.FINGER_KNUCKLES
+        ):
+            tip = landmarks[tip_idx]
+            knuckle = landmarks[knuckle_idx]
+            if tip.y > knuckle.y:
+                return False
+        return True
+
+    @staticmethod
+    def is_fist(landmarks):
+        """Check if hand is in a fist position."""
+        if not landmarks:
+            return False
+        for tip_idx, knuckle_idx in zip(
+            GestureRecognizer.FINGER_TIPS,
+            GestureRecognizer.FINGER_KNUCKLES
+        ):
+            tip = landmarks[tip_idx]
+            knuckle = landmarks[knuckle_idx]
+            if tip.y < knuckle.y:
+                return False
+        return True
+
+    @staticmethod
+    def is_middle_finger(landmarks):
+        """Check if showing middle finger (中指)."""
+        if not landmarks:
+            return False
+
+        middle_tip = landmarks[12]
+        middle_pip = landmarks[11]
+        index_tip = landmarks[8]
+        index_pip = landmarks[7]
+        ring_tip = landmarks[16]
+        ring_pip = landmarks[15]
+        pinky_tip = landmarks[20]
+        pinky_pip = landmarks[19]
+
+        middle_extended = middle_tip.y < middle_pip.y
+        index_curled = index_tip.y > index_pip.y
+        ring_curled = ring_tip.y > ring_pip.y
+        pinky_curled = pinky_tip.y > pinky_pip.y
+
+        return middle_extended and index_curled and ring_curled and pinky_curled
+
     @staticmethod
     def is_palm_facing(landmarks):
-        """
-        Check if palm is facing the camera (not back of hand).
-
-        Uses handedness cross-product: if thumb is on the "other side"
-        of the wrist from the fingers, palm is facing camera.
-        When back of hand faces camera the fingers and thumb
-        are on the same side of the wrist.
-        """
+        """Check if palm is facing the camera."""
         if not landmarks:
             return False
 
@@ -73,145 +148,11 @@ class GestureRecognizer:
         thumb_tip = landmarks[4]
         pinky_tip = landmarks[20]
 
-        # Vector from wrist to index_mcp (pointing toward fingers)
         to_index = (index_mcp.x - wrist.x, index_mcp.y - wrist.y)
-        # Vector from wrist to thumb_tip
         to_thumb = (thumb_tip.x - wrist.x, thumb_tip.y - wrist.y)
-        # Vector from wrist to pinky_tip
         to_pinky = (pinky_tip.x - wrist.x, pinky_tip.y - wrist.y)
 
-        # Cross product tells us which side thumb is on vs fingers
-        # cross > 0 means thumb on left side of finger direction (pinky side)
-        # cross < 0 means thumb on right side (index side)
         cross = to_index[0] * to_thumb[1] - to_index[1] * to_thumb[0]
-
-        # Cross for pinky as well
         cross_pinky = to_index[0] * to_pinky[1] - to_index[1] * to_pinky[0]
 
-        # Palm-facing: thumb and pinky are on similar side (same sign of cross product)
-        # Back-facing: thumb and pinky are on opposite sides
-        # Use absolute comparison
-        same_sign_thumb_pinky = (cross * cross_pinky) > 0
-
-        # Also check: thumb should be on the "outside" (opposite from pinky)
-        # Back of hand: fingers and thumb cluster together on same side
-        # Palm: fingers and thumb spread apart
-
-        return same_sign_thumb_pinky
-
-    @staticmethod
-    def is_open_palm(landmarks):
-        """
-        Check if hand is open (all fingers extended).
-
-        Args:
-            landmarks: List of 21 hand landmarks
-
-        Returns:
-            True if open palm, False otherwise
-        """
-        if not landmarks:
-            return False
-
-        # Check if all fingertips are above their knuckles
-        for tip_idx, knuckle_idx in zip(
-            GestureRecognizer.FINGER_TIPS,
-            GestureRecognizer.FINGER_KNUCKLES
-        ):
-            tip = landmarks[tip_idx]
-            knuckle = landmarks[knuckle_idx]
-
-            # If any fingertip is below its knuckle, hand is not open
-            if tip.y > knuckle.y:
-                return False
-
-        return True
-    
-    @staticmethod
-    def is_fist(landmarks):
-        """
-        Check if hand is in a fist position.
-        
-        Args:
-            landmarks: List of 21 hand landmarks
-            
-        Returns:
-            True if fist, False otherwise
-        """
-        if not landmarks:
-            return False
-        
-        # Fist: fingertips below knuckles
-        for tip_idx, knuckle_idx in zip(
-            GestureRecognizer.FINGER_TIPS,
-            GestureRecognizer.FINGER_KNUCKLES
-        ):
-            tip = landmarks[tip_idx]
-            knuckle = landmarks[knuckle_idx]
-            
-            if tip.y < knuckle.y:
-                return False
-        
-        return True
-    
-    @staticmethod
-    def is_middle_finger(landmarks):
-        """
-        Check if showing middle finger (中指).
-        
-        Detection: Middle finger extended, other fingers curled
-        
-        Args:
-            landmarks: List of 21 hand landmarks
-            
-        Returns:
-            True if middle finger gesture, False otherwise
-        """
-        if not landmarks:
-            return False
-        
-        # Landmarks for each finger (tip, pip, mcp)
-        # Index: 8, 7, 5
-        # Middle: 12, 11, 9
-        # Ring: 16, 15, 13
-        # Pinky: 20, 19, 17
-        
-        middle_tip = landmarks[12]
-        middle_pip = landmarks[11]
-        middle_mcp = landmarks[9]
-        
-        index_tip = landmarks[8]
-        index_pip = landmarks[7]
-        
-        ring_tip = landmarks[16]
-        ring_pip = landmarks[15]
-        
-        pinky_tip = landmarks[20]
-        pinky_pip = landmarks[19]
-        
-        # Middle finger extended (tip above pip)
-        middle_extended = middle_tip.y < middle_pip.y
-        
-        # Other fingers curled (tips below their pip joints)
-        index_curled = index_tip.y > index_pip.y
-        ring_curled = ring_tip.y > ring_pip.y
-        pinky_curled = pinky_tip.y > pinky_pip.y
-        
-        return middle_extended and index_curled and ring_curled and pinky_curled
-    
-    @staticmethod
-    def get_cursor_position(landmarks):
-        """
-        Get cursor position from index finger tip.
-        
-        Args:
-            landmarks: List of 21 hand landmarks
-            
-        Returns:
-            (x, y) normalized coordinates (0-1)
-        """
-        if not landmarks:
-            return None
-        
-        index_tip = landmarks[GestureRecognizer.INDEX_TIP]
-        return (index_tip.x, index_tip.y)
+        return (cross * cross_pinky) > 0

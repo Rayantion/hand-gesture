@@ -81,16 +81,17 @@ class HandGestureApp:
                 # List of 21 NormalizedLandmark objects
                 landmarks = results.hand_landmarks[0]
 
-                # Move cursor
-                cursor_pos = (landmarks[8].x, landmarks[8].y)
-                self.cursor.move_to(cursor_pos[0], cursor_pos[1])
-                action_text = "Moving cursor"
-
                 current_time = time.time()
                 is_pinched = self.gesture_recognizer.is_pinched(landmarks)
                 is_open_palm = self.gesture_recognizer.is_open_palm(landmarks)
                 is_middle_finger = self.gesture_recognizer.is_middle_finger(landmarks)
                 is_palm_facing = self.gesture_recognizer.is_palm_facing(landmarks)
+
+                # Thumb + index midpoint cursor (sensitivity applied inside get_cursor_position)
+                cursor_pos = self.gesture_recognizer.get_cursor_position(landmarks)
+                if cursor_pos:
+                    self.cursor.move_to(cursor_pos[0], cursor_pos[1])
+                action_text = "Moving cursor"
 
                 # Reject if back of hand is showing
                 if not is_palm_facing:

@@ -6,7 +6,7 @@ Handles all mouse cursor movements and clicks
 import pyautogui
 import numpy as np
 from collections import deque
-from config import SMOOTHING_WINDOW
+from config import SMOOTHING_WINDOW, CURSOR_SENSITIVITY
 
 
 class CursorController:
@@ -30,23 +30,19 @@ class CursorController:
     def move_to(self, normalized_x, normalized_y):
         """
         Move cursor to position with smoothing.
-        
+
         Args:
             normalized_x: X position (0-1)
             normalized_y: Y position (0-1)
         """
-        # Convert to screen coordinates
         screen_x = int(normalized_x * self.screen_width)
         screen_y = int(normalized_y * self.screen_height)
-        
-        # Add to smoothing buffer
+
         self.position_buffer.append((screen_x, screen_y))
-        
-        # Calculate average position
+
         avg_x = int(np.mean([p[0] for p in self.position_buffer]))
         avg_y = int(np.mean([p[1] for p in self.position_buffer]))
-        
-        # Move cursor
+
         pyautogui.moveTo(avg_x, avg_y, duration=0)
     
     def click(self):
