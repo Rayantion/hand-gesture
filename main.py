@@ -45,11 +45,11 @@ class HandGestureApp:
         self.gesture_recognizer = GestureRecognizer()
         self.cursor = CursorController()
 
-        self.last_pinch_time = 0
-        self.pinch_count = 0
+        self.was_pinched = False   # was pinched last frame?
+        self.pinch_released = False  # just released pinch this frame?
+        self.last_pinch_release = 0  # timestamp of last release
         self.is_holding = False
         self.hold_start_time = None
-        self.position_buffer = deque(maxlen=5)
         self.running = True
 
         print(f"🖐️ {WINDOW_NAME} Started")
@@ -81,70 +81,79 @@ class HandGestureApp:
                 # List of 21 NormalizedLandmark objects
                 landmarks = results.hand_landmarks[0]
 
-                # Get cursor position from index finger tip (landmark 8)
+                # Move cursor
                 cursor_pos = (landmarks[8].x, landmarks[8].y)
                 self.cursor.move_to(cursor_pos[0], cursor_pos[1])
                 action_text = "Moving cursor"
 
                 current_time = time.time()
-
                 is_pinched = self.gesture_recognizer.is_pinched(landmarks)
                 is_open_palm = self.gesture_recognizer.is_open_palm(landmarks)
                 is_middle_finger = self.gesture_recognizer.is_middle_finger(landmarks)
+
+                # === Detect pinch RELEASE ===
+                if self.was_pinched and not is_pinched:
+                    self.pinch_released = True
+                    self.was_pinched = False
+
+                    # Click on RELEASE
+                    time_since_last = current_time - self.last_pinch_release
+                    if time_since_last < DOUBLE_CLICK_INTERVAL:
+                        self.cursor.double_click()
+                        action_text = "DOUBLE CLICK!"
+                    else:
+                        # Only single-click if we weren't doing a drag
+                        if not (self.is_holding and self.cursor.is_dragging):
+                            self.cursor.click()
+                            action_text = "CLICK"
+
+                    self.last_pinch_release = current_time
+
+                    # End hold on release
+                    if self.is_holding and self.cursor.is_dragging:
+                        self.cursor.mouse_up()
+                        action_text = "RELEASED"
+                        self.is_holding = False
+                        self.hold_start_time = None
+
+                elif is_pinched:
+                    self.was_pinched = True
+                    self.pinch_released = False
+
+                    # Start hold timer on first pinched frame
+                    if not self.is_holding:
+                        self.is_holding = True
+                        self.hold_start_time = current_time
+
+                    # Drag after HOLD_DURATION
+                    hold_time = current_time - self.hold_start_time
+                    if hold_time > HOLD_DURATION and not self.cursor.is_dragging:
+                        self.cursor.mouse_down()
+                        action_text = "DRAGGING"
+
+                    if self.cursor.is_dragging:
+                        action_text = "DRAGGING"
+
+                else:
+                    # Not pinched
+                    if self.was_pinched:
+                        self.pinch_released = False
+                        self.was_pinched = False
+                    if self.is_holding and not self.cursor.is_dragging:
+                        self.is_holding = False
+                        self.hold_start_time = None
+
+                    if is_open_palm:
+                        action_text = "Palm open - moving"
 
                 if is_middle_finger:
                     action_text = "靠北 😂"
                     self._show_kaobei(frame)
 
-                elif is_pinched:
-                    if not self.is_holding:
-                        self.is_holding = True
-                        self.hold_start_time = current_time
-                    else:
-                        hold_time = current_time - self.hold_start_time
-                        if hold_time > HOLD_DURATION:
-                            if not self.cursor.is_dragging:
-                                self.cursor.mouse_down()
-                                action_text = "DRAGGING"
-                            else:
-                                action_text = "DRAGGING"
-
-                    time_since_last = current_time - self.last_pinch_time
-
-                    if time_since_last < DOUBLE_CLICK_INTERVAL:
-                        self.cursor.double_click()
-                        action_text = "DOUBLE CLICK!"
-                        self.pinch_count = 0
-                    else:
-                        if self.pinch_count == 0:
-                            self.cursor.click()
-                            action_text = "CLICK"
-
-                    self.last_pinch_time = current_time
-                    self.pinch_count += 1
-
-                else:
-                    if self.is_holding and self.cursor.is_dragging:
-                        self.cursor.mouse_up()
-                        action_text = "RELEASED"
-
-                    self.is_holding = False
-                    self.hold_start_time = None
-                    self.pinch_count = 0
-
-                    if is_open_palm:
-                        action_text = "Palm open - moving"
-
                 if DEBUG:
-                    cv2.putText(
-                        frame,
-                        f"Pinched: {is_pinched} | Open: {is_open_palm}",
-                        (10, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (255, 255, 0),
-                        1
-                    )
+                    state = f"Pinch:{int(is_pinched)} Hold:{int(self.is_holding)} Drag:{int(self.cursor.is_dragging)}"
+                    cv2.putText(frame, state, (10, 80),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
 
             self._draw_overlay(frame, action_text)
             cv2.imshow(WINDOW_NAME, frame)

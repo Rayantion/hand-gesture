@@ -3,9 +3,9 @@ Configuration settings for Hand Gesture Control
 Easy to adjust sensitivity and parameters
 """
 
-# Pinch detection threshold (0-1, smaller = more strict)
+# Pinch detection threshold (0-1, smaller = more strict, larger = more sensitive)
 # Distance between thumb and index finger tips
-PINCH_THRESHOLD = 0.05
+PINCH_THRESHOLD = 0.07
 
 # Double click timing (seconds)
 # Max time between pinches to register as double click
