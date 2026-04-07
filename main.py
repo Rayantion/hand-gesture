@@ -18,7 +18,6 @@ Usage:
 
 import cv2
 import time
-from collections import deque
 
 from config import (
     CAM_WIDTH, CAM_HEIGHT, WINDOW_NAME,
@@ -30,26 +29,24 @@ from cursor import CursorController
 
 
 class HandGestureApp:
-    """Main application for hand gesture cursor control."""
 
     def __init__(self):
-        """Initialize all components."""
         self.cap = cv2.VideoCapture(0)
         self.cap.set(3, CAM_WIDTH)
         self.cap.set(4, CAM_HEIGHT)
 
         if not self.cap.isOpened():
-            raise RuntimeError("Could not open camera. Please check your webcam.")
+            raise RuntimeError("Could not open camera.")
 
         self.hand_tracker = HandTracker()
         self.gesture_recognizer = GestureRecognizer()
         self.cursor = CursorController()
 
-        self.was_pinched = False   # was pinched last frame?
-        self.pinch_released = False  # just released pinch this frame?
-        self.last_pinch_release = 0  # timestamp of last release
+        self.was_pinched = False
+        self.last_pinch_release = 0
         self.is_holding = False
         self.hold_start_time = None
+        self.home_position = None
         self.running = True
 
         print(f"🖐️ {WINDOW_NAME} Started")
@@ -61,7 +58,6 @@ class HandGestureApp:
         print("   - Press 'q' to quit")
 
     def run(self):
-        """Main application loop."""
         while self.running:
             ret, frame = self.cap.read()
             if not ret:
@@ -78,96 +74,86 @@ class HandGestureApp:
             if results.hand_landmarks:
                 self.hand_tracker.draw_landmarks(frame, results)
 
-                # List of 21 NormalizedLandmark objects
                 landmarks = results.hand_landmarks[0]
-
                 current_time = time.time()
+
                 is_pinched = self.gesture_recognizer.is_pinched(landmarks)
                 is_open_palm = self.gesture_recognizer.is_open_palm(landmarks)
                 is_middle_finger = self.gesture_recognizer.is_middle_finger(landmarks)
-                is_palm_facing = self.gesture_recognizer.is_palm_facing(landmarks)
 
-                # Thumb + index midpoint cursor (sensitivity applied inside get_cursor_position)
-                cursor_pos = self.gesture_recognizer.get_cursor_position(landmarks)
+                # Set home position on first frame seen
+                if self.home_position is None:
+                    thumb = landmarks[4]
+                    index = landmarks[8]
+                    self.home_position = (
+                        (thumb.x + index.x) / 2.0,
+                        (thumb.y + index.y) / 2.0
+                    )
+
+                # Cursor follows hand relative to home position
+                cursor_pos = self.gesture_recognizer.get_cursor_position(
+                    landmarks, self.home_position
+                )
                 if cursor_pos:
                     self.cursor.move_to(cursor_pos[0], cursor_pos[1])
                 action_text = "Moving cursor"
 
-                # Reject if back of hand is showing
-                if not is_palm_facing:
-                    action_text = "Show palm"
-                    if self.is_holding and self.cursor.is_dragging:
-                        self.cursor.mouse_up()
-                        self.is_holding = False
-                        self.hold_start_time = None
-                    self.was_pinched = False
-                elif is_middle_finger:
+                if is_middle_finger:
                     action_text = "靠北 😂"
                     self._show_kaobei(frame)
 
-                # === Detect pinch RELEASE ===
-                elif self.was_pinched and not is_pinched:
-                    self.pinch_released = True
-                    self.was_pinched = False
-
-                    # Click on RELEASE
-                    time_since_last = current_time - self.last_pinch_release
-                    if time_since_last < DOUBLE_CLICK_INTERVAL:
-                        self.cursor.double_click()
-                        action_text = "DOUBLE CLICK!"
-                    else:
-                        # Only single-click if we weren't doing a drag
-                        if not (self.is_holding and self.cursor.is_dragging):
-                            self.cursor.click()
-                            action_text = "CLICK"
-
-                    self.last_pinch_release = current_time
-
-                    # End hold on release
-                    if self.is_holding and self.cursor.is_dragging:
-                        self.cursor.mouse_up()
-                        action_text = "RELEASED"
-                        self.is_holding = False
-                        self.hold_start_time = None
-
                 elif is_pinched:
-                    self.was_pinched = True
-                    self.pinch_released = False
-
-                    # Start hold timer on first pinched frame
-                    if not self.is_holding:
+                    if not self.was_pinched:
+                        # First pinch frame
+                        self.was_pinched = True
                         self.is_holding = True
                         self.hold_start_time = current_time
-
-                    # Drag after HOLD_DURATION
-                    hold_time = current_time - self.hold_start_time
-                    if hold_time > HOLD_DURATION and not self.cursor.is_dragging:
-                        self.cursor.mouse_down()
-                        action_text = "DRAGGING"
-
-                    if self.cursor.is_dragging:
-                        action_text = "DRAGGING"
+                    else:
+                        # Held pinch → drag after HOLD_DURATION
+                        hold_time = current_time - self.hold_start_time
+                        if hold_time > HOLD_DURATION and not self.cursor.is_dragging:
+                            self.cursor.mouse_down()
+                            action_text = "DRAGGING"
+                        elif self.cursor.is_dragging:
+                            action_text = "DRAGGING"
 
                 else:
-                    # Not pinched
                     if self.was_pinched:
-                        self.pinch_released = False
+                        # Pinch released
+                        time_since_last = current_time - self.last_pinch_release
+                        if time_since_last < DOUBLE_CLICK_INTERVAL:
+                            self.cursor.double_click()
+                            action_text = "DOUBLE CLICK!"
+                        else:
+                            if not (self.is_holding and self.cursor.is_dragging):
+                                self.cursor.click()
+                                action_text = "CLICK"
+
+                        self.last_pinch_release = current_time
+
+                        if self.is_holding and self.cursor.is_dragging:
+                            self.cursor.mouse_up()
+                            action_text = "RELEASED"
+
                         self.was_pinched = False
-                    if self.is_holding and not self.cursor.is_dragging:
                         self.is_holding = False
                         self.hold_start_time = None
 
                     if is_open_palm:
                         action_text = "Palm open - moving"
 
-                if is_middle_finger:
-                    action_text = "靠北 😂"
-                    self._show_kaobei(frame)
-
                 if DEBUG:
-                    state = f"Pinch:{int(is_pinched)} Hold:{int(self.is_holding)} Drag:{int(self.cursor.is_dragging)}"
+                    state = f"Pinch:{int(is_pinched)} Drag:{int(self.cursor.is_dragging)}"
                     cv2.putText(frame, state, (10, 80),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+
+            else:
+                # No hand detected — reset
+                self.home_position = None
+                if self.is_holding and self.cursor.is_dragging:
+                    self.cursor.mouse_up()
+                self.is_holding = False
+                self.was_pinched = False
 
             self._draw_overlay(frame, action_text)
             cv2.imshow(WINDOW_NAME, frame)
@@ -179,44 +165,26 @@ class HandGestureApp:
         self.cleanup()
 
     def _draw_overlay(self, frame, action_text):
-        """Draw instructions and status on frame."""
         cv2.rectangle(frame, (0, 0), (frame.shape[1], 50), (0, 0, 0), -1)
-
         cv2.putText(
             frame,
             "Pinch=Click | DoublePinch=DoubleClick | PinchHold=Drag | Press 'q' to quit",
-            (10, 20),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (255, 255, 255),
-            1
+            (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1
         )
-
         cv2.putText(
-            frame,
-            action_text,
-            (10, 40),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 255, 0),
-            2
+            frame, action_text,
+            (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
         )
 
     def _show_kaobei(self, frame):
-        """Show 靠北 on screen when middle finger detected."""
         h, w = frame.shape[:2]
         cv2.putText(
-            frame,
-            "靠北",
+            frame, "靠北",
             (w // 2 - 100, h // 2),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            3,
-            (0, 0, 255),
-            10
+            cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 255), 10
         )
 
     def cleanup(self):
-        """Clean up resources."""
         self.cap.release()
         cv2.destroyAllWindows()
         self.hand_tracker.close()
@@ -224,7 +192,6 @@ class HandGestureApp:
 
 
 def main():
-    """Entry point."""
     try:
         app = HandGestureApp()
         app.run()

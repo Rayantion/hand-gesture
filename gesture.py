@@ -10,18 +10,11 @@ from config import PINCH_THRESHOLD, CURSOR_SENSITIVITY
 class GestureRecognizer:
     """Recognize hand gestures from landmarks."""
 
-    # Landmark indices
     THUMB_TIP = 4
     INDEX_TIP = 8
-    THUMB_MCP = 2
-    INDEX_MCP = 5
-    MIDDLE_MCP = 9
-    RING_MCP = 13
-    PINKY_MCP = 17
 
     FINGER_TIPS = [8, 12, 16, 20]
     FINGER_KNUCKLES = [5, 9, 13, 17]
-    FINGER_PIPS = [6, 10, 14, 18]  # middle joints
 
     @staticmethod
     def get_distance(p1, p2):
@@ -29,22 +22,6 @@ class GestureRecognizer:
 
     @staticmethod
     def is_pinched(landmarks):
-        """
-        Check if thumb and index finger are pinched together.
-        Only checks the two relevant fingers — no extra finger checks.
-        """
-        if not landmarks:
-            return False
-
-        thumb = landmarks[GestureRecognizer.THUMB_TIP]
-        index = landmarks[GestureRecognizer.INDEX_TIP]
-        distance = GestureRecognizer.get_distance(thumb, index)
-
-        return distance < PINCH_THRESHOLD
-
-    @staticmethod
-    def is_pinched_strict(landmarks):
-        """Strict pinch — just distance check, for drag release."""
         if not landmarks:
             return False
         thumb = landmarks[GestureRecognizer.THUMB_TIP]
@@ -52,10 +29,12 @@ class GestureRecognizer:
         return GestureRecognizer.get_distance(thumb, index) < PINCH_THRESHOLD
 
     @staticmethod
-    def get_cursor_position(landmarks):
+    def get_cursor_position(landmarks, home_position=None):
         """
-        Get cursor position from midpoint of thumb and index tips.
-        Applies sensitivity so small hand movements = full screen travel.
+        Cursor position relative to home (center of frame).
+        home_position: (x, y) of the hand when it first entered frame.
+        Sensitivity applied so ~3cm hand movement reaches screen edge.
+        Returns (x, y) in 0-1 screen space, or None if no landmarks.
         """
         if not landmarks:
             return None
@@ -66,17 +45,28 @@ class GestureRecognizer:
         mx = (thumb.x + index.x) / 2.0
         my = (thumb.y + index.y) / 2.0
 
-        # Amplify: x^0.4 means hand at ~40% of frame reaches 75% of screen
-        # Adjust power: lower = more sensitive, higher = more restrained
-        power = 1.0 / CURSOR_SENSITIVITY  # CURSOR_SENSITIVITY is > 1
-        mx = mx ** power
-        my = my ** power
+        if home_position is None:
+            # First frame — set this as home, cursor at center
+            return (0.5, 0.5)
 
-        return (mx, my)
+        home_x, home_y = home_position
+
+        # Delta from home position
+        dx = mx - home_x
+        dy = my - home_y
+
+        # Scale delta by sensitivity so small movements = full screen
+        # With CURSOR_SENSITIVITY=3.0, ~15cm movement from home reaches edge
+        cursor_x = 0.5 + dx * CURSOR_SENSITIVITY
+        cursor_y = 0.5 + dy * CURSOR_SENSITIVITY
+
+        cursor_x = max(0.0, min(1.0, cursor_x))
+        cursor_y = max(0.0, min(1.0, cursor_y))
+
+        return (cursor_x, cursor_y)
 
     @staticmethod
     def is_open_palm(landmarks):
-        """Check if hand is open (all fingers extended)."""
         if not landmarks:
             return False
         for tip_idx, knuckle_idx in zip(
@@ -91,7 +81,6 @@ class GestureRecognizer:
 
     @staticmethod
     def is_fist(landmarks):
-        """Check if hand is in a fist position."""
         if not landmarks:
             return False
         for tip_idx, knuckle_idx in zip(
@@ -106,10 +95,8 @@ class GestureRecognizer:
 
     @staticmethod
     def is_middle_finger(landmarks):
-        """Check if showing middle finger (中指)."""
         if not landmarks:
             return False
-
         middle_tip = landmarks[12]
         middle_pip = landmarks[11]
         index_tip = landmarks[8]
@@ -128,10 +115,8 @@ class GestureRecognizer:
 
     @staticmethod
     def is_palm_facing(landmarks):
-        """Check if palm is facing the camera."""
         if not landmarks:
             return False
-
         wrist = landmarks[0]
         index_mcp = landmarks[5]
         thumb_tip = landmarks[4]
