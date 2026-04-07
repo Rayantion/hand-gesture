@@ -4,7 +4,7 @@ Analyzes hand landmarks to recognize gestures
 """
 
 import numpy as np
-from config import PINCH_THRESHOLD
+from config import PINCH_THRESHOLD, CURSOR_SENSITIVITY
 
 
 class GestureRecognizer:
@@ -55,6 +55,7 @@ class GestureRecognizer:
     def get_cursor_position(landmarks):
         """
         Get cursor position from midpoint of thumb and index tips.
+        Applies sensitivity so small hand movements = full screen travel.
         """
         if not landmarks:
             return None
@@ -64,6 +65,12 @@ class GestureRecognizer:
 
         mx = (thumb.x + index.x) / 2.0
         my = (thumb.y + index.y) / 2.0
+
+        # Amplify: x^0.4 means hand at ~40% of frame reaches 75% of screen
+        # Adjust power: lower = more sensitive, higher = more restrained
+        power = 1.0 / CURSOR_SENSITIVITY  # CURSOR_SENSITIVITY is > 1
+        mx = mx ** power
+        my = my ** power
 
         return (mx, my)
 

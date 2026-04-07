@@ -29,5 +29,6 @@ WINDOW_NAME = "Hand Gesture Control"
 # Debug mode (show extra info)
 DEBUG = False
 
-# Cursor sensitivity (0.65 = amplified small movements, lower = more sensitive)
-CURSOR_SENSITIVITY = 0.65
+# Cursor sensitivity (higher = smaller movement needed to reach screen edge)
+# 1.0 = normal, 2.0 = hand at mid-frame reaches screen edge, 3.0 = hand at 1/3 reaches edge
+CURSOR_SENSITIVITY = 2.5
