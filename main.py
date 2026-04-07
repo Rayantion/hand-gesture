@@ -78,21 +78,24 @@ class HandGestureApp:
                 current_time = time.time()
 
                 is_pinched = self.gesture_recognizer.is_pinched(landmarks)
-                is_open_palm = self.gesture_recognizer.is_open_palm(landmarks)
                 is_middle_finger = self.gesture_recognizer.is_middle_finger(landmarks)
+                is_open_palm = self.gesture_recognizer.is_open_palm(landmarks, current_time)
 
                 # Set home position on first frame seen (wrist position)
                 if self.home_position is None:
                     wrist = landmarks[0]
                     self.home_position = (wrist.x, wrist.y)
 
-                # Cursor follows hand relative to home position
-                cursor_pos = self.gesture_recognizer.get_cursor_position(
-                    landmarks, self.home_position
-                )
-                if cursor_pos:
-                    self.cursor.move_to(cursor_pos[0], cursor_pos[1])
-                action_text = "Moving cursor"
+                # Cursor follows hand ONLY when palm is open and active (after 2s delay)
+                if is_open_palm:
+                    cursor_pos = self.gesture_recognizer.get_cursor_position(
+                        landmarks, self.home_position
+                    )
+                    if cursor_pos:
+                        self.cursor.move_to(cursor_pos[0], cursor_pos[1])
+                    action_text = "Moving cursor"
+                else:
+                    action_text = "Waiting for palm..."
 
                 if is_middle_finger:
                     action_text = "靠北 😂"
@@ -100,18 +103,22 @@ class HandGestureApp:
 
                 elif is_pinched:
                     if not self.was_pinched:
-                        # First pinch frame
+                        # First pinch frame - start timing
                         self.was_pinched = True
-                        self.is_holding = True
                         self.hold_start_time = current_time
+                        self.is_holding = False  # Not holding yet, just pinched
                     else:
-                        # Held pinch → drag after HOLD_DURATION
+                        # Check if held long enough for drag
                         hold_time = current_time - self.hold_start_time
-                        if hold_time > HOLD_DURATION and not self.cursor.is_dragging:
+                        if hold_time > HOLD_DURATION and not self.is_holding:
+                            # Start drag
+                            self.is_holding = True
                             self.cursor.mouse_down()
                             action_text = "DRAGGING"
-                        elif self.cursor.is_dragging:
+                        elif self.is_holding and self.cursor.is_dragging:
                             action_text = "DRAGGING"
+                        else:
+                            action_text = "Pinch (holding...)"
 
                 else:
                     if self.was_pinched:
@@ -121,22 +128,21 @@ class HandGestureApp:
                             self.cursor.double_click()
                             action_text = "DOUBLE CLICK!"
                         else:
-                            if not (self.is_holding and self.cursor.is_dragging):
+                            # Only click if we weren't dragging
+                            if not self.is_holding:
                                 self.cursor.click()
                                 action_text = "CLICK"
+                            else:
+                                action_text = "RELEASED"
 
-                        self.last_pinch_release = current_time
-
+                        # Release mouse button if we were dragging
                         if self.is_holding and self.cursor.is_dragging:
                             self.cursor.mouse_up()
-                            action_text = "RELEASED"
 
+                        self.last_pinch_release = current_time
                         self.was_pinched = False
                         self.is_holding = False
                         self.hold_start_time = None
-
-                    if is_open_palm:
-                        action_text = "Palm open - moving"
 
                 if DEBUG:
                     state = f"Pinch:{int(is_pinched)} Drag:{int(self.cursor.is_dragging)}"

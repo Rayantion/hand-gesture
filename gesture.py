@@ -4,6 +4,7 @@ With hysteresis, debouncing, and EMA smoothing to prevent false positives and ji
 """
 
 import numpy as np
+import time
 from config import (
     PINCH_ON_THRESHOLD, PINCH_OFF_THRESHOLD, PINCH_DEBOUNCE_FRAMES,
     SMOOTHING_ALPHA, CURSOR_SENSITIVITY
@@ -20,13 +21,13 @@ class GestureRecognizer:
     FINGER_KNUCKLES = [5, 9, 13, 17]
 
     def __init__(self):
-        # Hysteresis state
+        # Hysteresis state for pinch
         self._is_pinched = False
         self._pinch_debounce_count = 0
 
-        # EMA smoothing state
-        self._smooth_x = None
-        self._smooth_y = None
+        # Open palm timer (2 second delay before activation)
+        self._open_palm_start = None
+        self._palm_active = False
 
     @staticmethod
     def get_distance(p1, p2):
@@ -106,20 +107,47 @@ class GestureRecognizer:
         self._pinch_debounce_count = 0
         self._smooth_x = None
         self._smooth_y = None
+        self._open_palm_start = None
+        self._palm_active = False
 
-    @staticmethod
-    def is_open_palm(landmarks):
+    def is_open_palm(self, landmarks, current_time=None):
+        """
+        Detect open palm with 2-second activation delay.
+        Palm must be open AND facing camera for 2 seconds before cursor activates.
+        """
         if not landmarks:
+            self._open_palm_start = None
+            self._palm_active = False
             return False
+
+        # Check if all fingers are extended (open palm)
         for tip_idx, knuckle_idx in zip(
             GestureRecognizer.FINGER_TIPS,
             GestureRecognizer.FINGER_KNUCKLES
         ):
             tip = landmarks[tip_idx]
             knuckle = landmarks[knuckle_idx]
-            if tip.y > knuckle.y:
+            if tip.y > knuckle.y:  # Finger is curled
+                self._open_palm_start = None
+                self._palm_active = False
                 return False
-        return True
+
+        # Check if palm is facing camera (thumb and pinky on opposite sides of index)
+        if not self.is_palm_facing(landmarks):
+            self._open_palm_start = None
+            self._palm_active = False
+            return False
+
+        # Palm is open and facing - start/continue timer
+        if self._open_palm_start is None:
+            self._open_palm_start = current_time or time.time()
+
+        # Activate after 2 seconds
+        elapsed = (current_time or time.time()) - self._open_palm_start
+        if elapsed > 2.0:
+            self._palm_active = True
+
+        return self._palm_active
 
     @staticmethod
     def is_fist(landmarks):
@@ -157,18 +185,19 @@ class GestureRecognizer:
 
     @staticmethod
     def is_palm_facing(landmarks):
+        """
+        Check if palm is facing the camera (not the back of hand).
+        Uses z-depth: fingertips should be closer to camera than wrist.
+        """
         if not landmarks:
             return False
+
         wrist = landmarks[0]
-        index_mcp = landmarks[5]
-        thumb_tip = landmarks[4]
-        pinky_tip = landmarks[20]
+        # Check if fingertips are in front of wrist (lower z = closer to camera)
+        finger_z_sum = 0
+        for tip_idx in [4, 8, 12, 16, 20]:  # thumb, index, middle, ring, pinky tips
+            finger_z_sum += landmarks[tip_idx].z
 
-        to_index = (index_mcp.x - wrist.x, index_mcp.y - wrist.y)
-        to_thumb = (thumb_tip.x - wrist.x, thumb_tip.y - wrist.y)
-        to_pinky = (pinky_tip.x - wrist.x, pinky_tip.y - wrist.y)
-
-        cross = to_index[0] * to_thumb[1] - to_index[1] * to_thumb[0]
-        cross_pinky = to_index[0] * to_pinky[1] - to_index[1] * to_pinky[0]
-
-        return (cross * cross_pinky) > 0
+        avg_finger_z = finger_z_sum / 5.0
+        # Palm facing camera: fingers have lower z (closer) than wrist
+        return avg_finger_z < wrist.z
