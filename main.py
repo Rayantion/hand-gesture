@@ -79,15 +79,15 @@ class HandGestureApp:
 
                 is_pinched = self.gesture_recognizer.is_pinched(landmarks)
                 is_middle_finger = self.gesture_recognizer.is_middle_finger(landmarks)
-                is_open_palm = self.gesture_recognizer.is_open_palm(landmarks, current_time)
+                is_ready = self.gesture_recognizer.is_ready_to_move(landmarks, current_time)
 
                 # Set home position on first frame seen (wrist position)
                 if self.home_position is None:
                     wrist = landmarks[0]
                     self.home_position = (wrist.x, wrist.y)
 
-                # Cursor follows hand ONLY when palm is open and active (after 2s delay)
-                if is_open_palm:
+                # Cursor follows hand ONLY when ready gesture is active (after 2s delay)
+                if is_ready:
                     cursor_pos = self.gesture_recognizer.get_cursor_position(
                         landmarks, self.home_position
                     )
@@ -95,7 +95,7 @@ class HandGestureApp:
                         self.cursor.move_to(cursor_pos[0], cursor_pos[1])
                     action_text = "Moving cursor"
                 else:
-                    action_text = "Waiting for palm..."
+                    action_text = "Waiting (raise index+thumb)..."
 
                 if is_middle_finger:
                     action_text = "靠北 😂"

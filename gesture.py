@@ -110,44 +110,50 @@ class GestureRecognizer:
         self._open_palm_start = None
         self._palm_active = False
 
-    def is_open_palm(self, landmarks, current_time=None):
+    def is_ready_to_move(self, landmarks, current_time=None):
         """
-        Detect open palm with 2-second activation delay.
-        Palm must be open AND facing camera for 2 seconds before cursor activates.
+        Detect "ready" gesture: index and thumb extended (like a gun/pistol shape).
+        This is more natural than full open palm - user can relax other fingers.
+        Requires 2 seconds of steady ready gesture before cursor activates.
         """
         if not landmarks:
             self._open_palm_start = None
             self._palm_active = False
             return False
 
-        # Check if all fingers are extended (open palm)
-        for tip_idx, knuckle_idx in zip(
-            GestureRecognizer.FINGER_TIPS,
-            GestureRecognizer.FINGER_KNUCKLES
-        ):
-            tip = landmarks[tip_idx]
-            knuckle = landmarks[knuckle_idx]
-            if tip.y > knuckle.y:  # Finger is curled
-                self._open_palm_start = None
-                self._palm_active = False
-                return False
+        index_tip = landmarks[8]
+        index_pip = landmarks[7]
+        thumb_tip = landmarks[4]
+        thumb_ip = landmarks[3]
 
-        # Check if palm is facing camera (thumb and pinky on opposite sides of index)
+        # Index finger must be extended (tip above PIP joint)
+        index_extended = index_tip.y < index_pip.y
+
+        # Thumb must be extended (not curled into palm)
+        thumb_extended = abs(thumb_tip.y - thumb_ip.y) < 0.05 or thumb_tip.y < thumb_ip.y
+
+        # Check palm facing camera
         if not self.is_palm_facing(landmarks):
             self._open_palm_start = None
             self._palm_active = False
             return False
 
-        # Palm is open and facing - start/continue timer
-        if self._open_palm_start is None:
-            self._open_palm_start = current_time or time.time()
+        # Ready gesture detected
+        if index_extended and thumb_extended:
+            if self._open_palm_start is None:
+                self._open_palm_start = current_time or time.time()
 
-        # Activate after 2 seconds
-        elapsed = (current_time or time.time()) - self._open_palm_start
-        if elapsed > 2.0:
-            self._palm_active = True
+            # Activate after 2 seconds
+            elapsed = (current_time or time.time()) - self._open_palm_start
+            if elapsed > 2.0:
+                self._palm_active = True
 
-        return self._palm_active
+            return self._palm_active
+        else:
+            # Reset timer if gesture broken
+            self._open_palm_start = None
+            self._palm_active = False
+            return False
 
     @staticmethod
     def is_fist(landmarks):
