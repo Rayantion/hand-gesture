@@ -1,33 +1,17 @@
-"""
-Configuration settings for Hand Gesture Control
-Easy to adjust sensitivity and parameters
-"""
+# Pinch detection with hysteresis (prevents false positives)
+PINCH_ON_THRESHOLD = 0.04      # Distance to START pinch (tighter)
+PINCH_OFF_THRESHOLD = 0.08     # Distance to END pinch (looser)
+PINCH_DEBOUNCE_FRAMES = 3      # Consecutive frames needed to confirm pinch
+HOLD_DURATION = 0.2            # Seconds to hold before drag activates
 
-# Pinch detection threshold (0-1, smaller = more strict, larger = more sensitive)
-# Distance between thumb and index finger tips
-PINCH_THRESHOLD = 0.07
+# Cursor smoothing (EMA)
+SMOOTHING_ALPHA = 0.25         # 0.1=very smooth, 0.5=snappy
+CURSOR_SENSITIVITY = 3.0       # Delta multiplier from home position
 
-# Double click timing (seconds)
-# Max time between pinches to register as double click
-DOUBLE_CLICK_INTERVAL = 0.4
-
-# Hold duration for drag action (seconds)
-# How long to hold pinch before drag activates
-HOLD_DURATION = 0.8
-
-# Smoothing window size (1 = no smoothing, instant response)
-SMOOTHING_WINDOW = 1
-
-# Camera resolution
+# Camera
 CAM_WIDTH = 640
 CAM_HEIGHT = 480
-
-# Preview window title
 WINDOW_NAME = "Hand Gesture Control"
 
-# Debug mode (show extra info)
+# Debug
 DEBUG = False
-
-# Cursor sensitivity — delta from home position scaled to screen
-# With CURSOR_SENSITIVITY=3.0, ~15cm hand movement from center reaches screen edge
-CURSOR_SENSITIVITY = 3.0

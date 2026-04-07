@@ -154,6 +154,7 @@ class HandGestureApp:
                     self.cursor.mouse_up()
                 self.is_holding = False
                 self.was_pinched = False
+                self.gesture_recognizer.reset()
 
             self._draw_overlay(frame, action_text)
             cv2.imshow(WINDOW_NAME, frame)
