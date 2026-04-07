@@ -4,6 +4,7 @@ Handles all mouse cursor movements and clicks
 """
 
 import pyautogui
+pyautogui.FAILSAFE = False
 
 
 class CursorController:
