@@ -15,9 +15,8 @@ DOUBLE_CLICK_INTERVAL = 0.4
 # How long to hold pinch before drag activates
 HOLD_DURATION = 0.8
 
-# Smoothing window size
-# Number of frames to average for smooth cursor movement
-SMOOTHING_WINDOW = 3
+# Smoothing window size (1 = no smoothing, instant response)
+SMOOTHING_WINDOW = 1
 
 # Camera resolution
 CAM_WIDTH = 640
