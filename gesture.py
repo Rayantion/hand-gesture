@@ -70,44 +70,35 @@ class GestureRecognizer:
 
     def get_cursor_position(self, landmarks, home_position=None):
         """
-        Cursor position with EMA smoothing.
+        Cursor position based on WRIST (landmark 0).
         Returns (x, y) in 0-1 screen space.
+        No smoothing - direct mapping for zero lag.
         """
         if not landmarks:
             return None
 
-        thumb = landmarks[self.THUMB_TIP]
-        index = landmarks[self.INDEX_TIP]
-
-        mx = (thumb.x + index.x) / 2.0
-        my = (thumb.y + index.y) / 2.0
+        # Use wrist as cursor position (landmark 0)
+        wrist = landmarks[0]
+        wx, wy = wrist.x, wrist.y
 
         if home_position is None:
-            self._smooth_x = mx
-            self._smooth_y = my
+            self._smooth_x = wx
+            self._smooth_y = wy
             return (0.5, 0.5)
 
         home_x, home_y = home_position
-        dx = mx - home_x
-        dy = my - home_y
+        dx = wx - home_x
+        dy = wy - home_y
 
         # Apply sensitivity
         target_x = 0.5 + dx * CURSOR_SENSITIVITY
         target_y = 0.5 + dy * CURSOR_SENSITIVITY
 
-        # Clamp
+        # Clamp to 0-1
         target_x = max(0.0, min(1.0, target_x))
         target_y = max(0.0, min(1.0, target_y))
 
-        # EMA smoothing
-        if self._smooth_x is None:
-            self._smooth_x = target_x
-            self._smooth_y = target_y
-        else:
-            self._smooth_x = SMOOTHING_ALPHA * target_x + (1 - SMOOTHING_ALPHA) * self._smooth_x
-            self._smooth_y = SMOOTHING_ALPHA * target_y + (1 - SMOOTHING_ALPHA) * self._smooth_y
-
-        return (self._smooth_x, self._smooth_y)
+        return (target_x, target_y)
 
     def reset(self):
         """Reset all state (call when hand leaves frame)."""

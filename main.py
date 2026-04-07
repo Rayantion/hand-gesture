@@ -81,14 +81,10 @@ class HandGestureApp:
                 is_open_palm = self.gesture_recognizer.is_open_palm(landmarks)
                 is_middle_finger = self.gesture_recognizer.is_middle_finger(landmarks)
 
-                # Set home position on first frame seen
+                # Set home position on first frame seen (wrist position)
                 if self.home_position is None:
-                    thumb = landmarks[4]
-                    index = landmarks[8]
-                    self.home_position = (
-                        (thumb.x + index.x) / 2.0,
-                        (thumb.y + index.y) / 2.0
-                    )
+                    wrist = landmarks[0]
+                    self.home_position = (wrist.x, wrist.y)
 
                 # Cursor follows hand relative to home position
                 cursor_pos = self.gesture_recognizer.get_cursor_position(
