@@ -6,7 +6,7 @@ Handles all mouse cursor movements and clicks
 import pyautogui
 import numpy as np
 from collections import deque
-from config import SMOOTHING_WINDOW, SCREEN_WIDTH, SCREEN_HEIGHT
+from config import SMOOTHING_WINDOW
 
 
 class CursorController:
