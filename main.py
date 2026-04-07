@@ -90,9 +90,22 @@ class HandGestureApp:
                 is_pinched = self.gesture_recognizer.is_pinched(landmarks)
                 is_open_palm = self.gesture_recognizer.is_open_palm(landmarks)
                 is_middle_finger = self.gesture_recognizer.is_middle_finger(landmarks)
+                is_palm_facing = self.gesture_recognizer.is_palm_facing(landmarks)
+
+                # Reject if back of hand is showing
+                if not is_palm_facing:
+                    action_text = "Show palm"
+                    if self.is_holding and self.cursor.is_dragging:
+                        self.cursor.mouse_up()
+                        self.is_holding = False
+                        self.hold_start_time = None
+                    self.was_pinched = False
+                elif is_middle_finger:
+                    action_text = "靠北 😂"
+                    self._show_kaobei(frame)
 
                 # === Detect pinch RELEASE ===
-                if self.was_pinched and not is_pinched:
+                elif self.was_pinched and not is_pinched:
                     self.pinch_released = True
                     self.was_pinched = False
 
