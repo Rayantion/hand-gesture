@@ -39,8 +39,51 @@ class HandTracker:
         Returns:
             object with multi_hand_landmarks attribute (or None)
         """
+import cv2
+import time
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+
+
+class HandTracker:
+    """MediaPipe hand detection handler using Tasks API."""
+
+    MODEL_PATH = 'hand_landmarker.task'
+
+    def __init__(self):
+        """Initialize MediaPipe HandLandmarker via Tasks API."""
+        base_options = python.BaseOptions(model_asset_path=self.MODEL_PATH)
+        options = vision.HandLandmarkerOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.VIDEO,
+            num_hands=1,
+            min_hand_detection_confidence=0.7,
+            min_hand_presence_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+        self.detector = vision.HandLandmarker.create_from_options(options)
+        self._timestamp = 0
+
+    def process_frame(self, rgb_frame):
+        """
+        Process a frame and detect hand landmarks.
+
+        Args:
+            rgb_frame: RGB image frame
+
+        Returns:
+            object with multi_hand_landmarks attribute (or None)
+        """
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        results = self.detector.detect(mp_image)
+        results = self.detector.detect_for_video(mp_image, self._timestamp)
+        self._timestamp += 33  # ~30fps → 33ms per frame
+
+        class LegacyResults:
+            def __init__(self, hand_landmarks):
+                self.multi_hand_landmarks = hand_landmarks
+
+        return LegacyResults(results.hand_landmarks if results.hand_landmarks else None)
 
         class LegacyResults:
             def __init__(self, hand_landmarks):
