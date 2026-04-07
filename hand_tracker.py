@@ -1,6 +1,9 @@
 """
 Hand Tracker - MediaPipe Hand Detection
-Handles camera input and hand landmark detection
+Uses MediaPipe Tasks API (hand_landmarker.task model required).
+Download: python -c "from mediapipe.tasks.windows import HandLandmarker; print(HandLandmarker.model_filename)"
+Or get from: https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker_task/float16/1/hand_landmarker_task.par
+Save as 'hand_landmarker.task' in same folder as main.py
 """
 
 import cv2
@@ -8,59 +11,77 @@ import mediapipe as mp
 
 
 class HandTracker:
-    """MediaPipe hand detection handler."""
-    
+    """MediaPipe hand detection handler using Tasks API."""
+
+    MODEL_PATH = 'hand_landmarker.task'
+
     def __init__(self):
-        """Initialize MediaPipe Hands."""
-        self.mp_hands = mp.solutions.hands
-        self.mp_draw = mp.solutions.drawing_utils
-        self.hands = self.mp_hands.Hands(
-            static_image_mode=False,
-            max_num_hands=1,
-            min_detection_confidence=0.7,
+        """Initialize MediaPipe HandLandmarker via Tasks API."""
+        base_options = mp.BaseOptions(model_asset_path=self.MODEL_PATH)
+        options = mp.vision.HandLandmarkerOptions(
+            base_options=base_options,
+            running_mode=mp.vision.RunningMode.VIDEO,
+            num_hands=1,
+            min_hand_detection_confidence=0.7,
+            min_hand_presence_confidence=0.5,
             min_tracking_confidence=0.5
         )
-    
+        self.detector = mp.vision.HandLandmarker.create_from_options(options)
+
     def process_frame(self, rgb_frame):
         """
         Process a frame and detect hand landmarks.
-        
+
         Args:
             rgb_frame: RGB image frame
-            
+
         Returns:
-            MediaPipe hand landmarks or None
+            object with multi_hand_landmarks attribute (or None)
         """
-        return self.hands.process(rgb_frame)
-    
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        results = self.detector.detect(mp_image)
+
+        # Tasks result has .hand_landmarks as list of list of NormalizedLandmark
+        # Wrap in legacy-compatible format
+        class LegacyResults:
+            def __init__(self, hand_landmarks):
+                self.multi_hand_landmarks = hand_landmarks
+
+        return LegacyResults(results.hand_landmarks if results.hand_landmarks else None)
+
     def draw_landmarks(self, image, hand_landmarks):
         """
         Draw hand landmarks and connections on image.
-        
+
         Args:
             image: BGR image to draw on
-            hand_landmarks: Detected hand landmarks
-            
+            hand_landmarks: Tasks API landmark list from results.hand_landmarks
+
         Returns:
             Image with drawn landmarks
         """
-        self.mp_draw.draw_landmarks(
-            image,
-            hand_landmarks,
-            self.mp_hands.HAND_CONNECTIONS,
-            self.mp_draw.DrawingSpec(
-                color=(0, 255, 0),
-                thickness=2,
-                circle_radius=2
-            ),
-            self.mp_draw.DrawingSpec(
-                color=(0, 255, 0),
-                thickness=1,
-                circle_radius=1
-            )
-        )
+        if not hand_landmarks:
+            return image
+
+        # Draw each hand's landmarks
+        for landmarks in hand_landmarks:
+            # Draw connections
+            for connection in mp.HAND_CONNECTIONS:
+                start_idx, end_idx = connection
+                pt1 = landmarks[start_idx]
+                pt2 = landmarks[end_idx]
+                pt1 = (int(pt1.x * image.shape[1]), int(pt1.y * image.shape[0]))
+                pt2 = (int(pt2.x * image.shape[1]), int(pt2.y * image.shape[0]))
+                cv2.line(image, pt1, pt2, (0, 255, 0), 2)
+
+            # Draw landmark points
+            for lm in landmarks:
+                cx = int(lm.x * image.shape[1])
+                cy = int(lm.y * image.shape[0])
+                cv2.circle(image, (cx, cy), 3, (0, 255, 0), -1)
+
         return image
-    
+
     def close(self):
         """Clean up MediaPipe resources."""
-        self.hands.close()
+        self.detector.close()

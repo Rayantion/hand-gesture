@@ -12,6 +12,8 @@ Control your mouse cursor using hand gestures via webcam.
 
 ```bash
 pip install -r requirements.txt
+# Download hand landmarker model
+# The model file 'hand_landmarker.task' is downloaded automatically by MediaPipe
 ```
 
 ## Run
