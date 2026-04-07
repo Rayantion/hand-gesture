@@ -54,9 +54,7 @@ class HandTracker:
     def draw_landmarks(self, image, results):
         """
         Draw hand landmarks and connections on image.
-        Args:
-            image: BGR image to draw on
-            results: HandLandmarkerResult from detect_for_video
+        Optimized: only draws dots, no lines (faster).
         """
         if results.hand_landmarks is None:
             return image
@@ -64,12 +62,10 @@ class HandTracker:
         h, w = image.shape[:2]
 
         for hand_lms in results.hand_landmarks:
-            for (a, b) in HAND_CONNECTIONS:
-                pt1, pt2 = hand_lms[a], hand_lms[b]
-                cv2.line(image, (int(pt1.x * w), int(pt1.y * h)),
-                         (int(pt2.x * w), int(pt2.y * h)), (0, 255, 0), 2)
             for lm in hand_lms:
-                cv2.circle(image, (int(lm.x * w), int(lm.y * h)), 3, (0, 255, 0), -1)
+                cx = int(lm.x * w)
+                cy = int(lm.y * h)
+                cv2.circle(image, (cx, cy), 2, (0, 255, 0), -1)
 
         return image
 
