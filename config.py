@@ -17,7 +17,7 @@ HOLD_DURATION = 0.8
 
 # Smoothing window size
 # Number of frames to average for smooth cursor movement
-SMOOTHING_WINDOW = 5
+SMOOTHING_WINDOW = 3
 
 # Camera resolution
 CAM_WIDTH = 640

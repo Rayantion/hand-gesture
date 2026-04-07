@@ -31,7 +31,7 @@ class GestureRecognizer:
     def is_pinched(landmarks):
         """
         Check if thumb and index finger are pinched together.
-        Extra check: other fingers should be curled to avoid false triggers.
+        Only checks the two relevant fingers — no extra finger checks.
         """
         if not landmarks:
             return False
@@ -40,17 +40,7 @@ class GestureRecognizer:
         index = landmarks[GestureRecognizer.INDEX_TIP]
         distance = GestureRecognizer.get_distance(thumb, index)
 
-        if distance >= PINCH_THRESHOLD:
-            return False
-
-        # Additional check: other fingers should be somewhat curled
-        # (tips below their PIP joints) to avoid false positives
-        other_curled = 0
-        for tip_idx, pip_idx in zip([12, 16, 20], [10, 14, 18]):
-            if landmarks[tip_idx].y > landmarks[pip_idx].y:
-                other_curled += 1
-
-        return other_curled >= 2
+        return distance < PINCH_THRESHOLD
 
     @staticmethod
     def is_pinched_strict(landmarks):
@@ -65,7 +55,6 @@ class GestureRecognizer:
     def get_cursor_position(landmarks):
         """
         Get cursor position from midpoint of thumb and index tips.
-        Applies sensitivity curve so small movements cover more screen.
         """
         if not landmarks:
             return None
@@ -73,15 +62,8 @@ class GestureRecognizer:
         thumb = landmarks[GestureRecognizer.THUMB_TIP]
         index = landmarks[GestureRecognizer.INDEX_TIP]
 
-        # Midpoint
         mx = (thumb.x + index.x) / 2.0
         my = (thumb.y + index.y) / 2.0
-
-        # Sensitivity curve: amplify small movements
-        # Power < 1 compresses large movements, expands small ones
-        SENSITIVITY = 0.65  # lower = more sensitive
-        mx = mx ** SENSITIVITY
-        my = my ** SENSITIVITY
 
         return (mx, my)
 
