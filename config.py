@@ -7,7 +7,7 @@ DOUBLE_CLICK_INTERVAL = 0.3    # Max seconds between clicks for double-click
 
 # Cursor smoothing (EMA)
 SMOOTHING_ALPHA = 0.25         # 0.1=very smooth, 0.5=snappy
-CURSOR_SENSITIVITY = 3.0       # Delta multiplier from home position
+CURSOR_SENSITIVITY = 5.0       # Delta multiplier from home position (higher = works from farther)
 
 # Camera
 CAM_WIDTH = 640

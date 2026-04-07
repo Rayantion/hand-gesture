@@ -115,6 +115,7 @@ class GestureRecognizer:
         Detect "ready" gesture: index and thumb extended (like a gun/pistol shape).
         This is more natural than full open palm - user can relax other fingers.
         Requires 2 seconds of steady ready gesture before cursor activates.
+        Uses HYSTERESIS: once activated, stays active until gesture is clearly broken.
         """
         if not landmarks:
             self._open_palm_start = None
@@ -123,23 +124,22 @@ class GestureRecognizer:
 
         index_tip = landmarks[8]
         index_pip = landmarks[7]
+        index_dip = landmarks[6]
         thumb_tip = landmarks[4]
         thumb_ip = landmarks[3]
 
-        # Index finger must be extended (tip above PIP joint)
-        index_extended = index_tip.y < index_pip.y
+        # Index finger: tip should be above DIP joint (more lenient)
+        # Use relative Y position - lower value = higher in image = extended
+        index_extended = index_tip.y < index_dip.y
 
-        # Thumb must be extended (not curled into palm)
-        thumb_extended = abs(thumb_tip.y - thumb_ip.y) < 0.05 or thumb_tip.y < thumb_ip.y
+        # Thumb: just check it's not fully curled
+        thumb_extended = thumb_tip.y < thumb_ip.y * 1.2
 
         # Check palm facing camera
-        if not self.is_palm_facing(landmarks):
-            self._open_palm_start = None
-            self._palm_active = False
-            return False
+        palm_facing = self.is_palm_facing(landmarks)
 
         # Ready gesture detected
-        if index_extended and thumb_extended:
+        if index_extended and thumb_extended and palm_facing:
             if self._open_palm_start is None:
                 self._open_palm_start = current_time or time.time()
 
@@ -149,10 +149,22 @@ class GestureRecognizer:
                 self._palm_active = True
 
             return self._palm_active
+        elif self._palm_active:
+            # HYSTERESIS: Once activated, stay active unless gesture is VERY broken
+            # Only deactivate if BOTH index AND thumb are clearly curled
+            index_curled = index_tip.y > index_pip.y
+            thumb_curled = thumb_tip.y > thumb_ip.y * 1.5
+
+            if index_curled and thumb_curled:
+                self._palm_active = False
+                self._open_palm_start = None
+                return False
+            else:
+                # Keep active - user is still gesturing
+                return True
         else:
-            # Reset timer if gesture broken
+            # Not yet activated, reset timer
             self._open_palm_start = None
-            self._palm_active = False
             return False
 
     @staticmethod
@@ -194,6 +206,7 @@ class GestureRecognizer:
         """
         Check if palm is facing the camera (not the back of hand).
         Uses z-depth: fingertips should be closer to camera than wrist.
+        Lenient threshold for detection at distance.
         """
         if not landmarks:
             return False
@@ -206,4 +219,5 @@ class GestureRecognizer:
 
         avg_finger_z = finger_z_sum / 5.0
         # Palm facing camera: fingers have lower z (closer) than wrist
-        return avg_finger_z < wrist.z
+        # Lenient threshold (+0.1) for detection at distance
+        return avg_finger_z < wrist.z + 0.1
