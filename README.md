@@ -11,7 +11,6 @@ Control your mouse cursor using hand gestures via webcam.
 ## Install
 
 ```bash
-cd hand-gesture
 pip install -r requirements.txt
 ```
 
@@ -29,6 +28,16 @@ python main.py
 | Pinch (thumb + index) | Click |
 | Double pinch | Double click |
 | Pinch + hold | Drag |
+| Middle finger | 靠北 😂 |
+
+## Build .exe
+
+```bash
+pip install pyinstaller
+pyinstaller hand-gesture.spec
+```
+
+Output: `dist/HandGesture/HandGesture.exe`
 
 ## Quit
 
