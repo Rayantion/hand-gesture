@@ -1,13 +1,14 @@
 """
 Hand Tracker - MediaPipe Hand Detection
 Uses MediaPipe Tasks API (hand_landmarker.task model required).
-Download: python -c "from mediapipe.tasks.windows import HandLandmarker; print(HandLandmarker.model_filename)"
-Or get from: https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker_task/float16/1/hand_landmarker_task.par
+Download model: https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker_task/float16/1/hand_landmarker_task.par
 Save as 'hand_landmarker.task' in same folder as main.py
 """
 
 import cv2
 import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 
 
 class HandTracker:
@@ -17,16 +18,16 @@ class HandTracker:
 
     def __init__(self):
         """Initialize MediaPipe HandLandmarker via Tasks API."""
-        base_options = mp.BaseOptions(model_asset_path=self.MODEL_PATH)
-        options = mp.vision.HandLandmarkerOptions(
+        base_options = python.BaseOptions(model_asset_path=self.MODEL_PATH)
+        options = vision.HandLandmarkerOptions(
             base_options=base_options,
-            running_mode=mp.vision.RunningMode.VIDEO,
+            running_mode=vision.RunningMode.VIDEO,
             num_hands=1,
             min_hand_detection_confidence=0.7,
             min_hand_presence_confidence=0.5,
             min_tracking_confidence=0.5
         )
-        self.detector = mp.vision.HandLandmarker.create_from_options(options)
+        self.detector = vision.HandLandmarker.create_from_options(options)
 
     def process_frame(self, rgb_frame):
         """
@@ -41,8 +42,6 @@ class HandTracker:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
         results = self.detector.detect(mp_image)
 
-        # Tasks result has .hand_landmarks as list of list of NormalizedLandmark
-        # Wrap in legacy-compatible format
         class LegacyResults:
             def __init__(self, hand_landmarks):
                 self.multi_hand_landmarks = hand_landmarks
@@ -63,9 +62,7 @@ class HandTracker:
         if not hand_landmarks:
             return image
 
-        # Draw each hand's landmarks
         for landmarks in hand_landmarks:
-            # Draw connections
             for connection in mp.HAND_CONNECTIONS:
                 start_idx, end_idx = connection
                 pt1 = landmarks[start_idx]
@@ -74,7 +71,6 @@ class HandTracker:
                 pt2 = (int(pt2.x * image.shape[1]), int(pt2.y * image.shape[0]))
                 cv2.line(image, pt1, pt2, (0, 255, 0), 2)
 
-            # Draw landmark points
             for lm in landmarks:
                 cx = int(lm.x * image.shape[1])
                 cy = int(lm.y * image.shape[0])
