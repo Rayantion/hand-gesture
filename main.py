@@ -94,8 +94,8 @@ class HandGestureApp:
                     results.multi_hand_landmarks[0]
                 )
                 
-                # Get landmarks
-                landmarks = results.multi_hand_landmarks[0].landmark
+                # Get landmarks (list of 21 NormalizedLandmark objects)
+                landmarks = results.multi_hand_landmarks[0]
                 
                 # Get cursor position from index finger
                 cursor_pos = self.gesture_recognizer.get_cursor_position(landmarks)
