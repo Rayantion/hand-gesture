@@ -34,9 +34,9 @@ class HandTracker:
             base_options=base_options,
             running_mode=vision.RunningMode.VIDEO,
             num_hands=1,
-            min_hand_detection_confidence=0.7,
-            min_hand_presence_confidence=0.5,
-            min_tracking_confidence=0.5
+            min_hand_detection_confidence=0.5,  # Lower for faster detection
+            min_hand_presence_confidence=0.3,   # Lower for faster response
+            min_tracking_confidence=0.3         # Lower for smoother tracking
         )
         self.detector = vision.HandLandmarker.create_from_options(options)
         self._timestamp = 0

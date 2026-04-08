@@ -23,19 +23,17 @@ pyautogui.FAILSAFE = False
 
 class HandGestureApp:
     def __init__(self):
-        self.cap = cv2.VideoCapture(0)
+        self.cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Use DirectShow for lower latency
         self.cap.set(3, CAM_WIDTH)
         self.cap.set(4, CAM_HEIGHT)
+        self.cap.set(cv2.CAP_PROP_FPS, 30)  # Force 30fps for smoother capture
+        self.cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)  # Enable autofocus
 
         if not self.cap.isOpened():
             raise RuntimeError("Could not open camera.")
 
         self.hand_tracker = HandTracker()
         self.screen_width, self.screen_height = pyautogui.size()
-
-        # Smoothing
-        self.prev_x, self.prev_y = 0, 0
-        self.smoothing_factor = 0.8  # Higher = smoother
 
         # Pinch state
         self.is_pinched = False
@@ -84,16 +82,17 @@ class HandGestureApp:
                 cv2.circle(frame, (int(index_tip.x * w), int(index_tip.y * h)), 15, (0, 255, 0), -1)
                 cv2.circle(frame, (int(thumb_tip.x * w), int(thumb_tip.y * h)), 15, (0, 0, 255), -1)
 
-                # Calculate cursor position from index finger
-                cursor_x = int(np.interp(index_tip.x, (0, 1), (0, self.screen_width)))
-                cursor_y = int(np.interp(index_tip.y, (0, 1), (0, self.screen_height)))
+                # Calculate cursor position from index finger with sensitivity
+                # Use wrist as reference for relative movement
+                wrist = landmarks[0]
+                dx = (index_tip.x - wrist.x) * CURSOR_SENSITIVITY
+                dy = (index_tip.y - wrist.y) * CURSOR_SENSITIVITY
 
-                # Apply smoothing
-                smooth_x = self.prev_x + (cursor_x - self.prev_x) * self.smoothing_factor
-                smooth_y = self.prev_y + (cursor_y - self.prev_y) * self.smoothing_factor
-                self.prev_x, self.prev_y = smooth_x, smooth_y
+                # Map to screen coordinates (centered on wrist position)
+                cursor_x = int(np.interp(0.5 + dx, (0, 1), (0, self.screen_width)))
+                cursor_y = int(np.interp(0.5 + dy, (0, 1), (0, self.screen_height)))
 
-                pyautogui.moveTo(smooth_x, smooth_y, duration=0)
+                pyautogui.moveTo(cursor_x, cursor_y, duration=0)
                 action_text = "Moving cursor"
 
                 # Pinch detection
