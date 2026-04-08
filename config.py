@@ -11,6 +11,7 @@ DOUBLE_CLICK_INTERVAL = 0.3    # Max seconds between clicks for double-click
 
 # Cursor smoothing (0.1=very smooth, 0.9=snappy)
 SMOOTHING_FACTOR = 0.75
+CURSOR_SENSITIVITY = 1.0  # Kept for compatibility, not used in new implementation
 
 # Camera
 CAM_WIDTH = 640
