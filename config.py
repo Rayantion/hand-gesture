@@ -1,13 +1,16 @@
 # Pinch detection with hysteresis (prevents false positives)
-PINCH_ON_THRESHOLD = 0.04      # Distance to START pinch (tighter)
+PINCH_ON_THRESHOLD = 0.05      # Distance to START pinch (tighter)
 PINCH_OFF_THRESHOLD = 0.08     # Distance to END pinch (looser)
 PINCH_DEBOUNCE_FRAMES = 3      # Consecutive frames needed to confirm pinch
-HOLD_DURATION = 0.2            # Seconds to hold before drag activates
+
+# Drag activation
+HOLD_DURATION = 0.3            # Seconds to hold pinch before drag activates
+
+# Click timing
 DOUBLE_CLICK_INTERVAL = 0.3    # Max seconds between clicks for double-click
 
-# Cursor smoothing (EMA)
-SMOOTHING_ALPHA = 0.25         # 0.1=very smooth, 0.5=snappy
-CURSOR_SENSITIVITY = 5.0       # Delta multiplier from home position (higher = works from farther)
+# Cursor smoothing (0.1=very smooth, 0.9=snappy)
+SMOOTHING_FACTOR = 0.75
 
 # Camera
 CAM_WIDTH = 640

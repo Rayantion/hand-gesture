@@ -1,35 +1,27 @@
 """
 Hand Gesture Cursor Control - Main Application
-=================================================
-Controls mouse cursor using hand gestures from webcam.
-
-Controls:
-- Open palm: Move cursor
-- Pinch (thumb + index): Click
-- Double pinch: Double click
-- Pinch + hold: Drag/hold
-
-Requirements:
-    pip install -r requirements.txt
-
-Usage:
-    python main.py
+Based on proven working implementations from:
+- https://github.com/varadganjoo/hand-tracking-with-controls
+- https://github.com/aleafarrel-id/alea-aircursor
+- https://towardsdatascience.com/i-ditched-my-mouse-how-i-control-my-computer-with-hand-gestures-in-60-lines-of-python/
 """
 
 import cv2
 import time
+import numpy as np
+import pyautogui
 
 from config import (
     CAM_WIDTH, CAM_HEIGHT, WINDOW_NAME,
-    DOUBLE_CLICK_INTERVAL, HOLD_DURATION, DEBUG
+    PINCH_ON_THRESHOLD, PINCH_OFF_THRESHOLD, PINCH_DEBOUNCE_FRAMES,
+    HOLD_DURATION, DOUBLE_CLICK_INTERVAL, CURSOR_SENSITIVITY
 )
 from hand_tracker import HandTracker
-from gesture import GestureRecognizer
-from cursor import CursorController
+
+pyautogui.FAILSAFE = False
 
 
 class HandGestureApp:
-
     def __init__(self):
         self.cap = cv2.VideoCapture(0)
         self.cap.set(3, CAM_WIDTH)
@@ -39,155 +31,147 @@ class HandGestureApp:
             raise RuntimeError("Could not open camera.")
 
         self.hand_tracker = HandTracker()
-        self.gesture_recognizer = GestureRecognizer()
-        self.cursor = CursorController()
+        self.screen_width, self.screen_height = pyautogui.size()
 
-        self.was_pinched = False
-        self.last_pinch_release = 0
-        self.is_holding = False
-        self.hold_start_time = None
-        self.home_position = None
-        self.running = True
+        # Smoothing
+        self.prev_x, self.prev_y = 0, 0
+        self.smoothing_factor = 0.8  # Higher = smoother
+
+        # Pinch state
+        self.is_pinched = False
+        self.pinch_frame_count = 0
+        self.last_click_time = 0
+        self.last_release_time = 0
+
+        # Drag state
+        self.is_dragging = False
+        self.drag_start_time = 0
 
         print(f"🖐️ {WINDOW_NAME} Started")
         print("   Controls:")
-        print("   - Open palm: Move cursor")
-        print("   - Pinch: Click")
-        print("   - Double pinch: Double click")
-        print("   - Pinch + hold: Drag")
+        print("   - Index finger: Move cursor")
+        print("   - Pinch (thumb + index): Click")
+        print("   - Hold pinch: Drag")
         print("   - Press 'q' to quit")
 
+    def get_distance(self, p1, p2):
+        return np.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2)
+
     def run(self):
-        while self.running:
+        while True:
             ret, frame = self.cap.read()
             if not ret:
                 print("Error: Could not read frame")
                 break
 
             frame = cv2.flip(frame, 1)
+            h, w = frame.shape[:2]
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             results = self.hand_tracker.process_frame(rgb_frame)
+            current_time = time.time()
 
-            action_text = "Waiting..."
+            action_text = "Waiting for hand..."
 
             if results.hand_landmarks:
                 self.hand_tracker.draw_landmarks(frame, results)
-
                 landmarks = results.hand_landmarks[0]
-                current_time = time.time()
 
-                is_pinched = self.gesture_recognizer.is_pinched(landmarks)
-                is_middle_finger = self.gesture_recognizer.is_middle_finger(landmarks)
-                is_ready = self.gesture_recognizer.is_ready_to_move(landmarks, current_time)
+                index_tip = landmarks[8]   # Index finger tip
+                thumb_tip = landmarks[4]   # Thumb tip
 
-                # Set home position on first frame seen (wrist position)
-                if self.home_position is None:
-                    wrist = landmarks[0]
-                    self.home_position = (wrist.x, wrist.y)
+                # Draw landmarks
+                cv2.circle(frame, (int(index_tip.x * w), int(index_tip.y * h)), 15, (0, 255, 0), -1)
+                cv2.circle(frame, (int(thumb_tip.x * w), int(thumb_tip.y * h)), 15, (0, 0, 255), -1)
 
-                # Cursor follows hand ONLY when ready gesture is active (after 2s delay)
-                if is_ready:
-                    cursor_pos = self.gesture_recognizer.get_cursor_position(
-                        landmarks, self.home_position
-                    )
-                    if cursor_pos:
-                        self.cursor.move_to(cursor_pos[0], cursor_pos[1])
-                    action_text = "Moving cursor"
-                else:
-                    action_text = "Waiting (raise index+thumb)..."
+                # Calculate cursor position from index finger
+                cursor_x = int(np.interp(index_tip.x, (0, 1), (0, self.screen_width)))
+                cursor_y = int(np.interp(index_tip.y, (0, 1), (0, self.screen_height)))
 
-                if is_middle_finger:
-                    action_text = "靠北 😂"
-                    self._show_kaobei(frame)
+                # Apply smoothing
+                smooth_x = self.prev_x + (cursor_x - self.prev_x) * self.smoothing_factor
+                smooth_y = self.prev_y + (cursor_y - self.prev_y) * self.smoothing_factor
+                self.prev_x, self.prev_y = smooth_x, smooth_y
 
-                elif is_pinched:
-                    if not self.was_pinched:
-                        # First pinch frame - start timing
-                        self.was_pinched = True
-                        self.hold_start_time = current_time
-                        self.is_holding = False  # Not holding yet, just pinched
-                    else:
-                        # Check if held long enough for drag
-                        hold_time = current_time - self.hold_start_time
-                        if hold_time > HOLD_DURATION and not self.is_holding:
-                            # Start drag
-                            self.is_holding = True
-                            self.cursor.mouse_down()
-                            action_text = "DRAGGING"
-                        elif self.is_holding and self.cursor.is_dragging:
-                            action_text = "DRAGGING"
+                pyautogui.moveTo(smooth_x, smooth_y, duration=0)
+                action_text = "Moving cursor"
+
+                # Pinch detection
+                distance = self.get_distance(thumb_tip, index_tip)
+                pinch_threshold = PINCH_ON_THRESHOLD if not self.is_pinched else PINCH_OFF_THRESHOLD
+
+                if distance < pinch_threshold:
+                    self.pinch_frame_count += 1
+                    if self.pinch_frame_count >= PINCH_DEBOUNCE_FRAMES:
+                        if not self.is_pinched:
+                            # Just started pinching
+                            self.is_pinched = True
+                            self.drag_start_time = current_time
+                            action_text = "Pinch detected"
                         else:
-                            action_text = "Pinch (holding...)"
-
+                            # Holding pinch - check for drag
+                            hold_time = current_time - self.drag_start_time
+                            if hold_time > HOLD_DURATION and not self.is_dragging:
+                                self.is_dragging = True
+                                pyautogui.mouseDown()
+                                action_text = "DRAGGING"
+                            elif self.is_dragging:
+                                action_text = "DRAGGING"
                 else:
-                    if self.was_pinched:
-                        # Pinch released
-                        time_since_last = current_time - self.last_pinch_release
-                        if time_since_last < DOUBLE_CLICK_INTERVAL:
-                            self.cursor.double_click()
+                    if self.is_pinched:
+                        # Released pinch
+                        time_since_release = current_time - self.last_release_time
+
+                        if self.is_dragging:
+                            # End drag
+                            pyautogui.mouseUp()
+                            action_text = "Released drag"
+                        elif time_since_release < DOUBLE_CLICK_INTERVAL:
+                            # Double click
+                            pyautogui.doubleClick()
                             action_text = "DOUBLE CLICK!"
                         else:
-                            # Only click if we weren't dragging
-                            if not self.is_holding:
-                                self.cursor.click()
+                            # Single click
+                            if current_time - self.last_click_time > DOUBLE_CLICK_INTERVAL:
+                                pyautogui.click()
                                 action_text = "CLICK"
-                            else:
-                                action_text = "RELEASED"
 
-                        # Release mouse button if we were dragging
-                        if self.is_holding and self.cursor.is_dragging:
-                            self.cursor.mouse_up()
+                        self.last_release_time = current_time
+                        self.is_pinched = False
+                        self.is_dragging = False
+                        self.pinch_frame_count = 0
 
-                        self.last_pinch_release = current_time
-                        self.was_pinched = False
-                        self.is_holding = False
-                        self.hold_start_time = None
+                    action_text = "Hand open"
 
-                if DEBUG:
-                    state = f"Pinch:{int(is_pinched)} Drag:{int(self.cursor.is_dragging)}"
-                    cv2.putText(frame, state, (10, 80),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                # Show pinch distance
+                cv2.putText(frame, f"Distance: {distance:.3f}", (10, h - 50),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
             else:
-                # No hand detected — reset
-                self.home_position = None
-                if self.is_holding and self.cursor.is_dragging:
-                    self.cursor.mouse_up()
-                self.is_holding = False
-                self.was_pinched = False
-                self.gesture_recognizer.reset()
+                # No hand - reset
+                self.is_pinched = False
+                self.is_dragging = False
+                self.pinch_frame_count = 0
+                if self.is_dragging:
+                    pyautogui.mouseUp()
 
-            self._draw_overlay(frame, action_text)
+            # Draw status
+            cv2.rectangle(frame, (0, 0), (w, 50), (0, 0, 0), -1)
+            cv2.putText(frame, "Index=Move | Pinch=Click | Hold=Drag | 'q'=Quit",
+                       (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            cv2.putText(frame, action_text, (10, 40),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
             cv2.imshow(WINDOW_NAME, frame)
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                self.running = False
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
         self.cleanup()
 
-    def _draw_overlay(self, frame, action_text):
-        cv2.rectangle(frame, (0, 0), (frame.shape[1], 50), (0, 0, 0), -1)
-        cv2.putText(
-            frame,
-            "Pinch=Click | DoublePinch=DoubleClick | PinchHold=Drag | Press 'q' to quit",
-            (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1
-        )
-        cv2.putText(
-            frame, action_text,
-            (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
-        )
-
-    def _show_kaobei(self, frame):
-        h, w = frame.shape[:2]
-        cv2.putText(
-            frame, "靠北",
-            (w // 2 - 100, h // 2),
-            cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 255), 10
-        )
-
     def cleanup(self):
+        if self.is_dragging:
+            pyautogui.mouseUp()
         self.cap.release()
         cv2.destroyAllWindows()
         self.hand_tracker.close()
